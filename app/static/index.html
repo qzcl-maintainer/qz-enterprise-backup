@@ -25,6 +25,7 @@
       <nav class="tabs">
         <button class="tab-btn active" data-tab="jobs">Jobs</button>
         <button class="tab-btn" data-tab="history">History &amp; Logs</button>
+        <button class="tab-btn" data-tab="locations">Locations &amp; Connections</button>
       </nav>
       <div class="topbar-right">
         <button id="notif-btn" class="icon-btn">🔔 <span id="notif-count" class="badge hidden">0</span></button>
@@ -68,6 +69,32 @@
           <tbody id="runs-tbody"></tbody>
         </table>
       </section>
+
+      <section id="locations-tab" class="tab-panel hidden">
+        <div class="panel-header">
+          <h2>Storage Locations</h2>
+          <button id="create-location-btn" class="primary-btn">+ Add Location</button>
+        </div>
+        <p class="hint">Reusable local paths, NFS/SMB shares, or S3 buckets — pick one when creating a job instead of re-entering the same details.</p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Type</th><th>Details</th><th></th></tr>
+          </thead>
+          <tbody id="locations-tbody"></tbody>
+        </table>
+
+        <div class="panel-header" style="margin-top: 2rem;">
+          <h2>Database Connections</h2>
+          <button id="create-connection-btn" class="primary-btn">+ Add Connection</button>
+        </div>
+        <p class="hint">Reusable database credentials for SQL backup jobs.</p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Engine</th><th>Host</th><th>Database</th><th></th></tr>
+          </thead>
+          <tbody id="connections-tbody"></tbody>
+        </table>
+      </section>
     </main>
   </div>
 
@@ -89,14 +116,26 @@
         </fieldset>
 
         <div id="sql-fields" class="type-fields hidden">
-          <label>DB Engine
-            <select id="sql-engine"><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option><option value="mssql">MSSQL</option></select>
+          <label>Connection
+            <select id="sql-connection-mode">
+              <option value="saved">Saved connection</option>
+              <option value="custom">Custom</option>
+            </select>
           </label>
-          <label>Host<input type="text" id="sql-host" /></label>
-          <label>Port<input type="number" id="sql-port" /></label>
-          <label>Database<input type="text" id="sql-database" /></label>
-          <label>Username<input type="text" id="sql-username" /></label>
-          <label>Password<input type="password" id="sql-password" /></label>
+          <label id="sql-connection-select-label">Database Connection
+            <select id="sql-connection-select"></select>
+          </label>
+          <div id="sql-custom-fields">
+            <label>DB Engine
+              <select id="sql-engine"><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option><option value="mssql">MSSQL</option></select>
+            </label>
+            <label>Host<input type="text" id="sql-host" /></label>
+            <label>Port<input type="number" id="sql-port" /></label>
+            <label>Database<input type="text" id="sql-database" /></label>
+            <label>Username<input type="text" id="sql-username" /></label>
+            <label>Password<input type="password" id="sql-password" /></label>
+            <p class="hint">Leave blank when editing to keep the current password.</p>
+          </div>
           <label>Output Format
             <select id="sql-output-format"><option value="sql">.sql</option><option value="gz">.sql.gz</option></select>
           </label>
@@ -120,24 +159,42 @@
 
         <fieldset>
           <legend>Source</legend>
-          <select id="job-source-type">
-            <option value="local">Local</option>
-            <option value="nfs">NFS</option>
-            <option value="smb">SMB/CIFS</option>
-            <option value="s3">S3</option>
+          <select id="job-source-mode">
+            <option value="saved">Saved location</option>
+            <option value="custom">Custom</option>
           </select>
-          <div id="source-config"></div>
+          <label id="job-source-location-label">Storage Location
+            <select id="job-source-location"></select>
+          </label>
+          <div id="job-source-custom-fields">
+            <select id="job-source-type">
+              <option value="local">Local</option>
+              <option value="nfs">NFS</option>
+              <option value="smb">SMB/CIFS</option>
+              <option value="s3">S3</option>
+            </select>
+            <div id="source-config"></div>
+          </div>
         </fieldset>
 
         <fieldset>
           <legend>Destination</legend>
-          <select id="job-destination-type">
-            <option value="local">Local</option>
-            <option value="nfs">NFS</option>
-            <option value="smb">SMB/CIFS</option>
-            <option value="s3">S3</option>
+          <select id="job-destination-mode">
+            <option value="saved">Saved location</option>
+            <option value="custom">Custom</option>
           </select>
-          <div id="destination-config"></div>
+          <label id="job-destination-location-label">Storage Location
+            <select id="job-destination-location"></select>
+          </label>
+          <div id="job-destination-custom-fields">
+            <select id="job-destination-type">
+              <option value="local">Local</option>
+              <option value="nfs">NFS</option>
+              <option value="smb">SMB/CIFS</option>
+              <option value="s3">S3</option>
+            </select>
+            <div id="destination-config"></div>
+          </div>
         </fieldset>
 
         <label class="checkbox-label"><input type="checkbox" id="job-notify-success" /> Notify on success (in addition to failure)</label>
@@ -146,6 +203,55 @@
         <div class="modal-actions">
           <button type="button" id="job-cancel-btn" class="secondary-btn">Cancel</button>
           <button type="submit" class="primary-btn">Save Job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="location-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="location-modal-title">Add Storage Location</h2>
+      <form id="location-form">
+        <input type="hidden" id="location-id" />
+        <label>Name<input type="text" id="location-name" required /></label>
+        <label>Description<textarea id="location-description"></textarea></label>
+        <fieldset>
+          <legend>Type</legend>
+          <select id="location-type">
+            <option value="local">Local</option>
+            <option value="nfs">NFS</option>
+            <option value="smb">SMB/CIFS</option>
+            <option value="s3">S3</option>
+          </select>
+          <div id="location-config"></div>
+        </fieldset>
+        <div class="modal-actions">
+          <button type="button" id="location-cancel-btn" class="secondary-btn">Cancel</button>
+          <button type="submit" class="primary-btn">Save Location</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="connection-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="connection-modal-title">Add Database Connection</h2>
+      <form id="connection-form">
+        <input type="hidden" id="connection-id" />
+        <label>Name<input type="text" id="connection-name" required /></label>
+        <label>Description<textarea id="connection-description"></textarea></label>
+        <label>DB Engine
+          <select id="connection-engine"><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option><option value="mssql">MSSQL</option></select>
+        </label>
+        <label>Host<input type="text" id="connection-host" required /></label>
+        <label>Port<input type="number" id="connection-port" /></label>
+        <label>Database<input type="text" id="connection-database" required /></label>
+        <label>Username<input type="text" id="connection-username" required /></label>
+        <label>Password<input type="password" id="connection-password" /></label>
+        <p class="hint" id="connection-password-hint">Leave blank to keep the current password.</p>
+        <div class="modal-actions">
+          <button type="button" id="connection-cancel-btn" class="secondary-btn">Cancel</button>
+          <button type="submit" class="primary-btn">Save Connection</button>
         </div>
       </form>
     </div>

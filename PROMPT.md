@@ -94,14 +94,48 @@ Copies files between local and/or network paths.
 
 ---
 
-## UI Layout — Two Sections
+## Reusable Storage Locations & Database Connections
+
+Rather than re-entering the same SMB path or DB credentials on every job, users can save them once and reference them by name.
+
+### Storage Locations
+A named, reusable source/destination endpoint — same shape as a job's inline Source/Destination (local path, NFS, SMB/CIFS, or S3), but saved independently and selectable from a dropdown when creating or editing a job.
+
+| Field | Details |
+|---|---|
+| Name | Unique, user-facing label (e.g. "Office NAS") |
+| Description | Optional |
+| Type | `local` / `nfs` / `smb` / `s3` |
+| Config | Same fields as the matching inline type (host, share, credentials, bucket, etc.) |
+
+### Database Connections
+A named, reusable DB connection for SQL backup jobs.
+
+| Field | Details |
+|---|---|
+| Name | Unique, user-facing label (e.g. "Prod Postgres") |
+| Description | Optional |
+| Engine | MSSQL, MySQL, or PostgreSQL |
+| Host, Port, Database, Username, Password | Same fields as a SQL job's inline connection |
+
+### Behavior
+- A job's Source, Destination, and (for SQL jobs) DB connection can each independently be **Saved** (reference by ID) or **Custom** (inline, ad hoc — unchanged from the original per-job fields).
+- Saved references resolve **at run time**, not at save time — editing a saved location's password or a connection's host immediately applies to every job that references it.
+- A location or connection in use by at least one job cannot be deleted (update the job first).
+- Connection/location passwords are never echoed back by the API after creation; leaving the password field blank on an edit keeps the existing one.
+
+---
+
+## UI Layout — Three Sections
 
 ### Section 1: Jobs
 
 - List of all defined backup jobs in a table:
   - Job name, type, source summary, destination summary, last run time, last status badge
+  - Source/destination summary shows the saved location's name when the job references one, otherwise the inline path/host
 - Actions per job: **Edit**, **Delete**, **Run Now**
 - **Create Job** button opens a form/modal
+  - Source, Destination, and (for SQL jobs) DB Connection each have a Saved/Custom toggle
 - Status badges: `Idle` · `Running` · `Success` · `Failed`
 - Status updates in real time via polling or WebSocket
 
@@ -113,6 +147,12 @@ Copies files between local and/or network paths.
 - Click any row → expand an inline **line-by-line log viewer**
   - Displays captured stdout and stderr
   - Monospace font, scrollable, line numbers
+
+### Section 3: Locations & Connections
+
+- **Storage Locations** table: name, type, details, Edit/Delete actions; **Add Location** button opens a form/modal
+- **Database Connections** table: name, engine, host, database, Edit/Delete actions; **Add Connection** button opens a form/modal
+- Deleting a location/connection still referenced by a job is blocked (409) until the job is updated
 
 ---
 
@@ -256,6 +296,16 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 | GET | `/api/runs/{id}/logs` | Get line-by-line log for a run |
 | GET | `/api/notifications` | Get unread in-app notifications |
 | POST | `/api/notifications/{id}/read` | Mark notification as read |
+| GET | `/api/storage-locations` | List all storage locations |
+| POST | `/api/storage-locations` | Create a storage location |
+| GET | `/api/storage-locations/{id}` | Get a storage location |
+| PUT | `/api/storage-locations/{id}` | Update a storage location |
+| DELETE | `/api/storage-locations/{id}` | Delete a storage location (409 if in use) |
+| GET | `/api/database-connections` | List all database connections |
+| POST | `/api/database-connections` | Create a database connection |
+| GET | `/api/database-connections/{id}` | Get a database connection (password omitted) |
+| PUT | `/api/database-connections/{id}` | Update a database connection (blank password keeps the current one) |
+| DELETE | `/api/database-connections/{id}` | Delete a database connection (409 if in use) |
 
 ---
 
@@ -263,13 +313,24 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ### `Job`
 - `id`, `name`, `description`
-- `source_type` (local / nfs / smb)
-- `source_config` (JSON)
-- `destination_type` (local / nfs / smb / s3)
-- `destination_config` (JSON)
+- `source_type` (local / nfs / smb / s3, nullable), `source_config` (JSON), `source_location_id` (FK → `StorageLocation`, nullable)
+- `destination_type` (local / nfs / smb / s3, nullable), `destination_config` (JSON), `destination_location_id` (FK → `StorageLocation`, nullable)
 - `backup_type` (sql / s3 / filecopy)
-- `backup_config` (JSON)
+- `backup_config` (JSON), `database_connection_id` (FK → `DatabaseConnection`, nullable, sql jobs only)
 - `notify_on_success` (bool)
+- `created_at`, `updated_at`
+- A `*_location_id`/`database_connection_id` takes precedence over the matching inline fields when set; inline fields are ignored (not deleted) once a saved reference is attached
+
+### `StorageLocation`
+- `id`, `name` (unique), `description`
+- `location_type` (local / nfs / smb / s3)
+- `config` (JSON — same shape as a job's inline source/destination config)
+- `created_at`, `updated_at`
+
+### `DatabaseConnection`
+- `id`, `name` (unique), `description`
+- `engine` (postgresql / mysql / mssql)
+- `host`, `port`, `database`, `username`, `password`
 - `created_at`, `updated_at`
 
 ### `JobRun`
@@ -288,18 +349,21 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ## Deliverables Checklist
 
-- [ ] `docker-compose.yml`
-- [ ] `Dockerfile`
-- [ ] FastAPI backend (models, routes, job runner, notifications)
-- [ ] SQL backup support: MSSQL, MySQL, PostgreSQL
-- [ ] S3 copy and sync support
-- [ ] File copy: xcopy and rsync modes
-- [ ] NFS and CIFS/SMB mount support
-- [ ] Vanilla HTML/CSS/JS frontend — Jobs section
-- [ ] Vanilla HTML/CSS/JS frontend — History & Logs section
-- [ ] Line-by-line log viewer
-- [ ] In-app toast notifications with real-time status updates
-- [ ] Email notifications via SMTP
-- [ ] Session-based auth from `.env`
-- [ ] `.env.example`
-- [ ] `README.md` with setup instructions
+- [x] `docker-compose.yml`
+- [x] `Dockerfile`
+- [x] FastAPI backend (models, routes, job runner, notifications)
+- [x] SQL backup support: MSSQL, MySQL, PostgreSQL
+- [x] S3 copy and sync support
+- [x] File copy: xcopy and rsync modes
+- [x] NFS and CIFS/SMB mount support
+- [x] Vanilla HTML/CSS/JS frontend — Jobs section
+- [x] Vanilla HTML/CSS/JS frontend — History & Logs section
+- [x] Line-by-line log viewer
+- [x] In-app toast notifications with real-time status updates
+- [x] Email notifications via SMTP
+- [x] Session-based auth from `.env`
+- [x] `.env.example`
+- [x] `README.md` with setup instructions
+- [x] Reusable Storage Locations (saved source/destination endpoints)
+- [x] Reusable Database Connections (saved SQL credentials)
+- [x] Locations & Connections UI section with Saved/Custom toggle on jobs

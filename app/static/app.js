@@ -33,6 +33,8 @@ function showLogin() {
 function showApp() {
   document.getElementById("login-view").classList.add("hidden");
   document.getElementById("app-view").classList.remove("hidden");
+  loadLocations();
+  loadConnections();
   loadJobs();
   loadRuns();
   pollNotifications();
@@ -82,6 +84,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("hidden"));
     document.getElementById(`${btn.dataset.tab}-tab`).classList.remove("hidden");
     if (btn.dataset.tab === "history") loadRuns();
+    if (btn.dataset.tab === "locations") { loadLocations(); loadConnections(); }
   });
 });
 
@@ -114,8 +117,8 @@ async function loadJobs() {
     tr.innerHTML = `
       <td>${escapeHtml(job.name)}</td>
       <td>${job.backup_type}</td>
-      <td>${describeEndpoint(job.source_type, job.source_config)}</td>
-      <td>${describeEndpoint(job.destination_type, job.destination_config)}</td>
+      <td>${describeJobEndpoint(job.source_location_name, job.source_type, job.source_config)}</td>
+      <td>${describeJobEndpoint(job.destination_location_name, job.destination_type, job.destination_config)}</td>
       <td>${lastRun ? new Date(lastRun.started_at).toLocaleString() : "—"}</td>
       <td>${statusBadge(lastRun ? lastRun.status : "idle")}</td>
       <td class="row-actions">
@@ -141,7 +144,12 @@ function describeEndpoint(type, config) {
   if (type === "nfs") return `nfs://${config.host || ""}${config.export_path || ""}`;
   if (type === "smb") return `smb://${config.host || ""}/${config.share || ""}`;
   if (type === "s3") return `s3://${config.bucket || ""}/${config.prefix || ""}`;
-  return type;
+  return type || "—";
+}
+
+function describeJobEndpoint(locationName, type, config) {
+  if (locationName) return `📍 ${escapeHtml(locationName)}`;
+  return describeEndpoint(type, config);
 }
 
 function escapeHtml(str) {
@@ -251,30 +259,87 @@ function updateTypeFields(backupType) {
   document.getElementById("filecopy-fields").classList.toggle("hidden", backupType !== "filecopy");
 }
 
+function updateEndpointMode(prefix) {
+  const mode = document.getElementById(`job-${prefix}-mode`).value;
+  document.getElementById(`job-${prefix}-location-label`).classList.toggle("hidden", mode !== "saved");
+  document.getElementById(`job-${prefix}-custom-fields`).classList.toggle("hidden", mode !== "custom");
+}
+
+document.getElementById("job-source-mode").addEventListener("change", () => updateEndpointMode("source"));
+document.getElementById("job-destination-mode").addEventListener("change", () => updateEndpointMode("destination"));
+
+function updateSqlConnectionMode() {
+  const mode = document.getElementById("sql-connection-mode").value;
+  document.getElementById("sql-connection-select-label").classList.toggle("hidden", mode !== "saved");
+  document.getElementById("sql-custom-fields").classList.toggle("hidden", mode !== "custom");
+}
+
+document.getElementById("sql-connection-mode").addEventListener("change", updateSqlConnectionMode);
+
+function populateLocationSelect(selectId, locations) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = locations
+    .map((loc) => `<option value="${loc.id}">${escapeHtml(loc.name)} (${loc.location_type})</option>`)
+    .join("");
+}
+
+function populateConnectionSelect(selectId, connections) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = connections
+    .map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${c.engine})</option>`)
+    .join("");
+}
+
+let editingJob = null;
+
 function openJobModal(job = null) {
+  editingJob = job;
   const modal = document.getElementById("job-modal");
   document.getElementById("job-modal-title").textContent = job ? "Edit Job" : "Create Job";
   document.getElementById("job-id").value = job ? job.id : "";
   document.getElementById("job-name").value = job ? job.name : "";
   document.getElementById("job-description").value = job ? job.description || "" : "";
   document.getElementById("job-backup-type").value = job ? job.backup_type : "sql";
-  document.getElementById("job-source-type").value = job ? job.source_type : "local";
-  document.getElementById("job-destination-type").value = job ? job.destination_type : "local";
   document.getElementById("job-notify-success").checked = job ? job.notify_on_success : false;
   document.getElementById("job-enabled").checked = job ? job.enabled : true;
 
-  renderConfigFields("source-config", job ? job.source_type : "local", job ? job.source_config : {});
-  renderConfigFields("destination-config", job ? job.destination_type : "local", job ? job.destination_config : {});
+  populateLocationSelect("job-source-location", storageLocationsCache);
+  populateLocationSelect("job-destination-location", storageLocationsCache);
+  populateConnectionSelect("sql-connection-select", dbConnectionsCache);
+
+  const sourceSaved = !!(job && job.source_location_id);
+  document.getElementById("job-source-mode").value = sourceSaved ? "saved" : "custom";
+  if (sourceSaved) document.getElementById("job-source-location").value = job.source_location_id;
+  document.getElementById("job-source-type").value = (job && job.source_type) || "local";
+  renderConfigFields("source-config", (job && job.source_type) || "local", (job && job.source_config) || {});
+  updateEndpointMode("source");
+
+  const destSaved = !!(job && job.destination_location_id);
+  document.getElementById("job-destination-mode").value = destSaved ? "saved" : "custom";
+  if (destSaved) document.getElementById("job-destination-location").value = job.destination_location_id;
+  document.getElementById("job-destination-type").value = (job && job.destination_type) || "local";
+  renderConfigFields(
+    "destination-config",
+    (job && job.destination_type) || "local",
+    (job && job.destination_config) || {}
+  );
+  updateEndpointMode("destination");
+
   updateTypeFields(job ? job.backup_type : "sql");
 
   const bc = job ? job.backup_config : {};
+  const connectionSaved = !!(job && job.database_connection_id);
+  document.getElementById("sql-connection-mode").value = connectionSaved ? "saved" : "custom";
+  if (connectionSaved) document.getElementById("sql-connection-select").value = job.database_connection_id;
   document.getElementById("sql-engine").value = bc.engine || "postgresql";
   document.getElementById("sql-host").value = bc.host || "";
   document.getElementById("sql-port").value = bc.port || "";
   document.getElementById("sql-database").value = bc.database || "";
   document.getElementById("sql-username").value = bc.username || "";
-  document.getElementById("sql-password").value = bc.password || "";
+  document.getElementById("sql-password").value = "";
   document.getElementById("sql-output-format").value = bc.output_format || "sql";
+  updateSqlConnectionMode();
+
   document.getElementById("s3job-mode").value = bc.mode || "copy";
   document.getElementById("s3job-direction").value = bc.direction || "upload";
   document.getElementById("filecopy-mode").value = bc.mode || "rsync";
@@ -290,14 +355,19 @@ document.getElementById("job-cancel-btn").addEventListener("click", () => {
 
 function buildBackupConfig(backupType) {
   if (backupType === "sql") {
+    const outputFormat = document.getElementById("sql-output-format").value;
+    if (document.getElementById("sql-connection-mode").value === "saved") {
+      return { output_format: outputFormat };
+    }
+    const password = document.getElementById("sql-password").value || (editingJob && editingJob.backup_config.password) || "";
     return {
       engine: document.getElementById("sql-engine").value,
       host: document.getElementById("sql-host").value,
       port: Number(document.getElementById("sql-port").value) || undefined,
       database: document.getElementById("sql-database").value,
       username: document.getElementById("sql-username").value,
-      password: document.getElementById("sql-password").value,
-      output_format: document.getElementById("sql-output-format").value,
+      password,
+      output_format: outputFormat,
     };
   }
   if (backupType === "s3") {
@@ -319,18 +389,33 @@ document.getElementById("job-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = document.getElementById("job-id").value;
   const backupType = document.getElementById("job-backup-type").value;
+
   const payload = {
     name: document.getElementById("job-name").value,
     description: document.getElementById("job-description").value,
-    source_type: document.getElementById("job-source-type").value,
-    source_config: collectConfig("source-config"),
-    destination_type: document.getElementById("job-destination-type").value,
-    destination_config: collectConfig("destination-config"),
     backup_type: backupType,
     backup_config: buildBackupConfig(backupType),
     notify_on_success: document.getElementById("job-notify-success").checked,
     enabled: document.getElementById("job-enabled").checked,
   };
+
+  if (document.getElementById("job-source-mode").value === "saved") {
+    payload.source_location_id = Number(document.getElementById("job-source-location").value);
+  } else {
+    payload.source_type = document.getElementById("job-source-type").value;
+    payload.source_config = collectConfig("source-config");
+  }
+
+  if (document.getElementById("job-destination-mode").value === "saved") {
+    payload.destination_location_id = Number(document.getElementById("job-destination-location").value);
+  } else {
+    payload.destination_type = document.getElementById("job-destination-type").value;
+    payload.destination_config = collectConfig("destination-config");
+  }
+
+  if (backupType === "sql" && document.getElementById("sql-connection-mode").value === "saved") {
+    payload.database_connection_id = Number(document.getElementById("sql-connection-select").value);
+  }
 
   try {
     if (id) {
@@ -388,6 +473,173 @@ async function openLogModal(runId) {
 document.getElementById("log-close-btn").addEventListener("click", () => {
   document.getElementById("log-modal").classList.add("hidden");
 });
+
+// ---------- Storage Locations ----------
+
+let storageLocationsCache = [];
+
+async function loadLocations() {
+  storageLocationsCache = await api("/api/storage-locations");
+  const tbody = document.getElementById("locations-tbody");
+  tbody.innerHTML = "";
+
+  storageLocationsCache.forEach((loc) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(loc.name)}</td>
+      <td>${loc.location_type}</td>
+      <td>${describeEndpoint(loc.location_type, loc.config)}</td>
+      <td class="row-actions">
+        <button data-action="edit" title="Edit">✎</button>
+        <button data-action="delete" title="Delete">🗑</button>
+      </td>
+    `;
+    tr.querySelector('[data-action="edit"]').addEventListener("click", () => openLocationModal(loc));
+    tr.querySelector('[data-action="delete"]').addEventListener("click", () => deleteLocation(loc.id));
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("location-type").addEventListener("change", (e) => {
+  renderConfigFields("location-config", e.target.value);
+});
+
+function openLocationModal(location = null) {
+  document.getElementById("location-modal-title").textContent = location ? "Edit Storage Location" : "Add Storage Location";
+  document.getElementById("location-id").value = location ? location.id : "";
+  document.getElementById("location-name").value = location ? location.name : "";
+  document.getElementById("location-description").value = location ? location.description || "" : "";
+  document.getElementById("location-type").value = location ? location.location_type : "local";
+  renderConfigFields("location-config", location ? location.location_type : "local", location ? location.config : {});
+  document.getElementById("location-modal").classList.remove("hidden");
+}
+
+document.getElementById("create-location-btn").addEventListener("click", () => openLocationModal());
+document.getElementById("location-cancel-btn").addEventListener("click", () => {
+  document.getElementById("location-modal").classList.add("hidden");
+});
+
+document.getElementById("location-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("location-id").value;
+  const payload = {
+    name: document.getElementById("location-name").value,
+    description: document.getElementById("location-description").value,
+    location_type: document.getElementById("location-type").value,
+    config: collectConfig("location-config"),
+  };
+  try {
+    if (id) {
+      await api(`/api/storage-locations/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast("Location updated", "success");
+    } else {
+      await api("/api/storage-locations", { method: "POST", body: JSON.stringify(payload) });
+      toast("Location created", "success");
+    }
+    document.getElementById("location-modal").classList.add("hidden");
+    loadLocations();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+});
+
+async function deleteLocation(id) {
+  if (!confirm("Delete this storage location?")) return;
+  try {
+    await api(`/api/storage-locations/${id}`, { method: "DELETE" });
+    toast("Location deleted", "info");
+    loadLocations();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ---------- Database Connections ----------
+
+let dbConnectionsCache = [];
+
+async function loadConnections() {
+  dbConnectionsCache = await api("/api/database-connections");
+  const tbody = document.getElementById("connections-tbody");
+  tbody.innerHTML = "";
+
+  dbConnectionsCache.forEach((conn) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(conn.name)}</td>
+      <td>${conn.engine}</td>
+      <td>${escapeHtml(conn.host)}</td>
+      <td>${escapeHtml(conn.database)}</td>
+      <td class="row-actions">
+        <button data-action="edit" title="Edit">✎</button>
+        <button data-action="delete" title="Delete">🗑</button>
+      </td>
+    `;
+    tr.querySelector('[data-action="edit"]').addEventListener("click", () => openConnectionModal(conn));
+    tr.querySelector('[data-action="delete"]').addEventListener("click", () => deleteConnection(conn.id));
+    tbody.appendChild(tr);
+  });
+}
+
+function openConnectionModal(connection = null) {
+  document.getElementById("connection-modal-title").textContent = connection ? "Edit Database Connection" : "Add Database Connection";
+  document.getElementById("connection-id").value = connection ? connection.id : "";
+  document.getElementById("connection-name").value = connection ? connection.name : "";
+  document.getElementById("connection-description").value = connection ? connection.description || "" : "";
+  document.getElementById("connection-engine").value = connection ? connection.engine : "postgresql";
+  document.getElementById("connection-host").value = connection ? connection.host : "";
+  document.getElementById("connection-port").value = connection ? connection.port || "" : "";
+  document.getElementById("connection-database").value = connection ? connection.database : "";
+  document.getElementById("connection-username").value = connection ? connection.username : "";
+  document.getElementById("connection-password").value = "";
+  document.getElementById("connection-password").required = !connection;
+  document.getElementById("connection-password-hint").classList.toggle("hidden", !connection);
+  document.getElementById("connection-modal").classList.remove("hidden");
+}
+
+document.getElementById("create-connection-btn").addEventListener("click", () => openConnectionModal());
+document.getElementById("connection-cancel-btn").addEventListener("click", () => {
+  document.getElementById("connection-modal").classList.add("hidden");
+});
+
+document.getElementById("connection-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("connection-id").value;
+  const payload = {
+    name: document.getElementById("connection-name").value,
+    description: document.getElementById("connection-description").value,
+    engine: document.getElementById("connection-engine").value,
+    host: document.getElementById("connection-host").value,
+    port: Number(document.getElementById("connection-port").value) || undefined,
+    database: document.getElementById("connection-database").value,
+    username: document.getElementById("connection-username").value,
+    password: document.getElementById("connection-password").value,
+  };
+  try {
+    if (id) {
+      await api(`/api/database-connections/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast("Connection updated", "success");
+    } else {
+      await api("/api/database-connections", { method: "POST", body: JSON.stringify(payload) });
+      toast("Connection created", "success");
+    }
+    document.getElementById("connection-modal").classList.add("hidden");
+    loadConnections();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+});
+
+async function deleteConnection(id) {
+  if (!confirm("Delete this database connection?")) return;
+  try {
+    await api(`/api/database-connections/${id}`, { method: "DELETE" });
+    toast("Connection deleted", "info");
+    loadConnections();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
 
 // ---------- Notifications ----------
 
