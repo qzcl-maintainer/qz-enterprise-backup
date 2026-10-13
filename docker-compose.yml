@@ -1,0 +1,17 @@
+services:
+  backup-app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data          # SQLite DB
+      - /mnt:/mnt             # Host paths for local/network backups
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=/data
+    cap_add:
+      - SYS_ADMIN             # required to mount NFS/CIFS shares from inside the container
+    security_opt:
+      - apparmor:unconfined   # required on AppArmor hosts for mount.nfs/mount.cifs to succeed
+    restart: unless-stopped
