@@ -2,9 +2,10 @@ services:
   backup-app:
     build: .
     ports:
-      - "8080:8080"
+      - "8443:8443"
     volumes:
       - ./data:/data          # SQLite DB
+      - ./ssl:/ssl:ro         # Self-signed TLS cert/key (see ssl/README.md)
       # - /mnt:/mnt             # Host paths for local/network backups
     env_file:
       - .env

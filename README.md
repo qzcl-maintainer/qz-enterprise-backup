@@ -11,6 +11,7 @@ A lightweight, self-hosted, web-based backup management application. Define, run
 - **Reusable Storage Locations & Database Connections** — save an SMB share, S3 bucket, or DB connection once and reference it from any job instead of re-entering it; updates to a saved location/connection apply to every job using it automatically
 - **History & logs** — every run's full stdout/stderr, filterable by job and status
 - **Notifications** — in-app + email on failure (optionally also on success, per job)
+- **HTTPS** — serves TLS directly via uvicorn, using a self-signed cert in `./ssl` by default
 
 ## Setup
 
@@ -25,11 +26,12 @@ A lightweight, self-hosted, web-based backup management application. Define, run
    docker compose up --build
    ```
 
-3. Open [http://localhost:8080](http://localhost:8080) and log in with your `ADMIN_USER` / `ADMIN_PASSWORD`.
+3. Open [https://localhost:8443](https://localhost:8443) and log in with your `ADMIN_USER` / `ADMIN_PASSWORD`. Your browser will warn about the self-signed certificate — that's expected, see `ssl/README.md`.
 
 ## Notes
 
 - The SQLite database lives at `./data/backup.db` (volume-mounted) — back this up too.
+- TLS is served directly by uvicorn using `ssl/cert.pem` / `ssl/key.pem` (self-signed by default — see `ssl/README.md` to regenerate or replace with a real certificate for production).
 - The host's `/mnt` is mounted into the container at `/mnt`, so "local" source/destination paths for host-mounted drives should live under `/mnt/...`.
 - Mounting NFS/CIFS shares from inside the container requires the `SYS_ADMIN` capability and (on AppArmor hosts) `apparmor:unconfined` — both are already set in `docker-compose.yml`.
 - Logs older than `LOG_RETENTION_DAYS` (default 30) are purged automatically on startup.

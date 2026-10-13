@@ -16,6 +16,7 @@ A lightweight, self-hosted, web-based backup management application deployed ent
 | Database | SQLite via SQLAlchemy |
 | Config | `.env` file |
 | Auth | Single admin user defined in `.env` |
+| Transport | HTTPS, served directly by uvicorn using a cert/key in `./ssl` |
 
 All services run in a single `docker-compose.yml`. The frontend is served by FastAPI (via static files or Jinja2 templates). No external database server required.
 
@@ -27,6 +28,16 @@ All services run in a single `docker-compose.yml`. The frontend is served by Fas
 - Session-based login protecting all routes
 - Login page served at `/login`
 - Env vars: `ADMIN_USER`, `ADMIN_PASSWORD`
+
+---
+
+## TLS / HTTPS
+
+- The app serves HTTPS directly — uvicorn is started with `--ssl-keyfile`/`--ssl-certfile`, no separate reverse proxy
+- Certificate and key live in `./ssl/cert.pem` and `./ssl/key.pem`, bind-mounted read-only into the container at `/ssl`
+- Shipped with a self-signed cert (CN=localhost, SAN=localhost/127.0.0.1) for out-of-the-box HTTPS; browsers will warn about the untrusted issuer — expected for self-signed
+- For a real deployment, replace `ssl/cert.pem`/`ssl/key.pem` with a CA-issued pair (same filenames, same mount point) — see `ssl/README.md`
+- App listens on container port `8443`
 
 ---
 
@@ -233,8 +244,12 @@ backup-app/
 │       ├── index.html
 │       ├── style.css
 │       └── app.js
-└── data/
-    └── backup.db         # SQLite DB (volume-mounted)
+├── data/
+│   └── backup.db         # SQLite DB (volume-mounted)
+└── ssl/
+    ├── cert.pem          # TLS certificate (self-signed by default)
+    ├── key.pem           # TLS private key
+    └── README.md         # how to regenerate / replace for production
 ```
 
 ### `docker-compose.yml` (outline)
@@ -244,9 +259,10 @@ services:
   backup-app:
     build: .
     ports:
-      - "8080:8080"
+      - "8443:8443"
     volumes:
       - ./data:/data          # SQLite DB
+      - ./ssl:/ssl:ro         # TLS cert/key
       - /mnt:/mnt             # Host paths for local/network backups
     env_file:
       - .env
@@ -274,7 +290,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8443", \
+     "--ssl-keyfile", "/ssl/key.pem", "--ssl-certfile", "/ssl/cert.pem"]
 ```
 
 ---
@@ -367,3 +384,4 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 - [x] Reusable Storage Locations (saved source/destination endpoints)
 - [x] Reusable Database Connections (saved SQL credentials)
 - [x] Locations & Connections UI section with Saved/Custom toggle on jobs
+- [x] HTTPS via uvicorn, with a self-signed cert/key in `./ssl`
