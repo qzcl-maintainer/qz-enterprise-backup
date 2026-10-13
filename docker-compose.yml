@@ -5,7 +5,7 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data          # SQLite DB
-      - /mnt:/mnt             # Host paths for local/network backups
+      # - /mnt:/mnt             # Host paths for local/network backups
     env_file:
       - .env
     environment:
