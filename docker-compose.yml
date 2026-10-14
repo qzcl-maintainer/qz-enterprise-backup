@@ -13,6 +13,9 @@ services:
       - DATA_DIR=/data
     cap_add:
       - SYS_ADMIN             # required to mount NFS/CIFS shares from inside the container
+      - DAC_READ_SEARCH       # mount.cifs toggles this via cap_set_proc(); without it, mount fails
+                              # with "Unable to apply new capability set." even when running as root,
+                              # since it's not in Docker's default capability bounding set
     security_opt:
       - apparmor:unconfined   # required on AppArmor hosts for mount.nfs/mount.cifs to succeed
     restart: unless-stopped

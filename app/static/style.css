@@ -87,6 +87,7 @@ main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
 .modal-content {
   background: #171a21; padding: 1.5rem; border-radius: 8px;
   width: 480px; max-height: 85vh; overflow-y: auto;
+  display: flex;
 }
 .modal-content.wide { width: 700px; }
 .modal-content h2 { margin-top: 0; }

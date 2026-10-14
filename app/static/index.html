@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Backup Manager</title>
+  <title>QZ Backup Manager</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -21,7 +21,7 @@
 
   <div id="app-view" class="app-view hidden">
     <header class="topbar">
-      <h1>Backup Manager</h1>
+      <h1>QZ Backup Manager</h1>
       <nav class="tabs">
         <button class="tab-btn active" data-tab="jobs">Jobs</button>
         <button class="tab-btn" data-tab="history">History &amp; Logs</button>
@@ -213,8 +213,8 @@
       <h2 id="location-modal-title">Add Storage Location</h2>
       <form id="location-form">
         <input type="hidden" id="location-id" />
-        <label>Name<input type="text" id="location-name" required /></label>
-        <label>Description<textarea id="location-description"></textarea></label>
+        <label>Name <input type="text" id="location-name" required /></label><br>
+        <label>Description <textarea id="location-description"></textarea></label><br>
         <fieldset>
           <legend>Type</legend>
           <select id="location-type">
@@ -238,16 +238,16 @@
       <h2 id="connection-modal-title">Add Database Connection</h2>
       <form id="connection-form">
         <input type="hidden" id="connection-id" />
-        <label>Name<input type="text" id="connection-name" required /></label>
-        <label>Description<textarea id="connection-description"></textarea></label>
+        <label>Name<input type="text" id="connection-name" required /></label><br>
+        <label>Description<textarea id="connection-description"></textarea></label><br>
         <label>DB Engine
           <select id="connection-engine"><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option><option value="mssql">MSSQL</option></select>
-        </label>
-        <label>Host<input type="text" id="connection-host" required /></label>
-        <label>Port<input type="number" id="connection-port" /></label>
-        <label>Database<input type="text" id="connection-database" required /></label>
-        <label>Username<input type="text" id="connection-username" required /></label>
-        <label>Password<input type="password" id="connection-password" /></label>
+        </label><br>
+        <label>Host<input type="text" id="connection-host" required /></label><br>
+        <label>Port<input type="number" id="connection-port" /></label><br>
+        <label>Database<input type="text" id="connection-database" required /></label><br>
+        <label>Username<input type="text" id="connection-username" required /></label><br>
+        <label>Password<input type="password" id="connection-password" /></label><br>
         <p class="hint" id="connection-password-hint">Leave blank to keep the current password.</p>
         <div class="modal-actions">
           <button type="button" id="connection-cancel-btn" class="secondary-btn">Cancel</button>
